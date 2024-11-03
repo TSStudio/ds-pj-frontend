@@ -107,6 +107,11 @@
                         label="公交"
                         size="large"
                     />
+                    <el-checkbox
+                        v-model="methods.subway"
+                        label="地铁"
+                        size="large"
+                    />
                 </div>
                 <el-button type="primary" @click="route_all()"
                     >全部寻路</el-button
@@ -294,6 +299,7 @@ export default {
                 cycling: false,
                 driving: false,
                 transit: false,
+                subway: false,
             },
         };
     },
@@ -310,7 +316,9 @@ export default {
         },
         look_full_route() {
             let latlngs = [];
+            let lastmethod = 0;
             let lastRoadName = "";
+            let routeLayer = L.featureGroup();
             latlngs.push([
                 this.tasks[0].result.nodes[this.tasks[0].result.path[0].start]
                     .lat,
@@ -326,6 +334,17 @@ export default {
                     return;
                 }
                 task.result.path.forEach((path) => {
+                    if (path.method != lastmethod) {
+                        L.polyline(latlngs, {
+                            color: this.getcolor(lastmethod),
+                        }).addTo(routeLayer);
+                        lastmethod = path.method;
+                        latlngs = [];
+                        latlngs.push([
+                            task.result.nodes[path.start].lat,
+                            task.result.nodes[path.start].lon,
+                        ]);
+                    }
                     latlngs.push([
                         task.result.nodes[path.end].lat,
                         task.result.nodes[path.end].lon,
@@ -351,17 +370,34 @@ export default {
                     }
                 });
             });
+            L.polyline(latlngs, {
+                color: this.getcolor(lastmethod),
+            }).addTo(routeLayer);
             if (this.routeshowlayer != null) {
                 this.map.removeLayer(this.routeshowlayer);
             }
             if (this.tooltipLayer != null) {
                 this.map.removeLayer(this.tooltipLayer);
             }
-            this.routeshowlayer = L.polyline(latlngs, {
-                color: "blue",
-            }).addTo(toRaw(this.map));
-            this.tooltipLayer = tooltipLayer.addTo(toRaw(this.map));
+            this.routeshowlayer = routeLayer.addTo(this.map);
+            this.tooltipLayer = tooltipLayer.addTo(this.map);
             this.map.fitBounds(this.routeshowlayer.getBounds());
+        },
+        getcolor(method) {
+            switch (method) {
+                case 1:
+                    return "#2222ff";
+                case 2:
+                    return "#7777ff";
+                case 4:
+                    return "#000000";
+                case 8:
+                    return "#ff8800";
+                case 16:
+                    return "#ff88cc";
+                default:
+                    return "#000000";
+            }
         },
         lookRoute(index, row) {
             if (row.result.path == undefined) {
@@ -371,13 +407,26 @@ export default {
                 return;
             }
             let latlngs = [];
+            let lastmethod = 0;
             let lastRoadName = "";
+            let routeLayer = L.featureGroup();
             latlngs.push([
                 row.result.nodes[row.result.path[0].start].lat,
                 row.result.nodes[row.result.path[0].start].lon,
             ]);
             let tooltipLayer = L.layerGroup();
             row.result.path.forEach((path) => {
+                if (path.method != lastmethod) {
+                    L.polyline(latlngs, {
+                        color: this.getcolor(lastmethod),
+                    }).addTo(routeLayer);
+                    lastmethod = path.method;
+                    latlngs = [];
+                    latlngs.push([
+                        row.result.nodes[path.start].lat,
+                        row.result.nodes[path.start].lon,
+                    ]);
+                }
                 latlngs.push([
                     row.result.nodes[path.end].lat,
                     row.result.nodes[path.end].lon,
@@ -402,16 +451,17 @@ export default {
                     }
                 }
             });
+            L.polyline(latlngs, {
+                color: this.getcolor(lastmethod),
+            }).addTo(routeLayer);
             if (this.routeshowlayer != null) {
                 this.map.removeLayer(this.routeshowlayer);
             }
             if (this.tooltipLayer != null) {
                 this.map.removeLayer(this.tooltipLayer);
             }
-            this.routeshowlayer = L.polyline(latlngs, {
-                color: "blue",
-            }).addTo(toRaw(this.map));
-            this.tooltipLayer = tooltipLayer.addTo(toRaw(this.map));
+            this.routeshowlayer = routeLayer.addTo(this.map);
+            this.tooltipLayer = tooltipLayer.addTo(this.map);
             this.map.fitBounds(this.routeshowlayer.getBounds());
         },
         route_all() {
@@ -427,7 +477,10 @@ export default {
                 methods += 4;
             }
             if (this.methods.transit) {
-                methods += 24;
+                methods += 8;
+            }
+            if (this.methods.subway) {
+                methods += 16;
             }
             if (methods == 0) {
                 ElMessage.error("请选择至少一种寻路方式");
@@ -815,6 +868,9 @@ export default {
                 localStorage.getItem("points_to_route")
             );
         }
+        if (localStorage.getItem("methods") != null) {
+            this.methods = JSON.parse(localStorage.getItem("methods"));
+        }
         let r_control = document.getElementById("r-control");
         r_control.addEventListener("mousedown", (e) => {
             this.mouseDownTime = new Date().getTime();
@@ -851,6 +907,12 @@ export default {
         points_to_route: {
             handler: function (val, oldVal) {
                 localStorage.setItem("points_to_route", JSON.stringify(val));
+            },
+            deep: true,
+        },
+        methods: {
+            handler: function (val, oldVal) {
+                localStorage.setItem("methods", JSON.stringify(val));
             },
             deep: true,
         },

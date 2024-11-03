@@ -86,6 +86,28 @@
             </el-tab-pane>
             <el-tab-pane label="路线" name="routing">
                 <h2>路径</h2>
+                <div>
+                    <el-checkbox
+                        v-model="methods.walking"
+                        label="步行"
+                        size="large"
+                    />
+                    <el-checkbox
+                        v-model="methods.cycling"
+                        label="骑行"
+                        size="large"
+                    />
+                    <el-checkbox
+                        v-model="methods.driving"
+                        label="驾车"
+                        size="large"
+                    />
+                    <el-checkbox
+                        v-model="methods.transit"
+                        label="公交"
+                        size="large"
+                    />
+                </div>
                 <el-button type="primary" @click="route_all()"
                     >全部寻路</el-button
                 >
@@ -255,6 +277,7 @@ export default {
             marker: null,
             routeshowlayer: null,
             searchMarker: null,
+            tooltipLayer: null,
             points: [],
             addr_input: "",
             search_result: [],
@@ -266,6 +289,12 @@ export default {
             isMouseDown: false,
             mouseDownX: 0,
             mouseDownWidth: 0,
+            methods: {
+                walking: true,
+                cycling: false,
+                driving: false,
+                transit: false,
+            },
         };
     },
     methods: {
@@ -281,12 +310,14 @@ export default {
         },
         look_full_route() {
             let latlngs = [];
+            let lastRoadName = "";
             latlngs.push([
                 this.tasks[0].result.nodes[this.tasks[0].result.path[0].start]
                     .lat,
                 this.tasks[0].result.nodes[this.tasks[0].result.path[0].start]
                     .lon,
             ]);
+            let tooltipLayer = L.layerGroup();
             this.tasks.forEach((task) => {
                 if (task.result.path == undefined) {
                     return;
@@ -299,14 +330,37 @@ export default {
                         task.result.nodes[path.end].lat,
                         task.result.nodes[path.end].lon,
                     ]);
+                    if (path.name) {
+                        if (path.name != lastRoadName) {
+                            lastRoadName = path.name;
+                            let tooltip = L.tooltip({
+                                permanent: true,
+                                direction: "center",
+                                className: "tooltip",
+                                offset: [0, 0],
+                                opacity: 0.8,
+                                sticky: true,
+                            })
+                                .setContent(path.name)
+                                .setLatLng([
+                                    task.result.nodes[path.start].lat,
+                                    task.result.nodes[path.start].lon,
+                                ]);
+                            tooltipLayer.addLayer(tooltip);
+                        }
+                    }
                 });
             });
             if (this.routeshowlayer != null) {
                 this.map.removeLayer(this.routeshowlayer);
             }
+            if (this.tooltipLayer != null) {
+                this.map.removeLayer(this.tooltipLayer);
+            }
             this.routeshowlayer = L.polyline(latlngs, {
                 color: "blue",
-            }).addTo(this.map);
+            }).addTo(toRaw(this.map));
+            this.tooltipLayer = tooltipLayer.addTo(toRaw(this.map));
             this.map.fitBounds(this.routeshowlayer.getBounds());
         },
         lookRoute(index, row) {
@@ -317,26 +371,68 @@ export default {
                 return;
             }
             let latlngs = [];
+            let lastRoadName = "";
             latlngs.push([
                 row.result.nodes[row.result.path[0].start].lat,
                 row.result.nodes[row.result.path[0].start].lon,
             ]);
+            let tooltipLayer = L.layerGroup();
             row.result.path.forEach((path) => {
                 latlngs.push([
                     row.result.nodes[path.end].lat,
                     row.result.nodes[path.end].lon,
                 ]);
+                if (path.name) {
+                    if (path.name != lastRoadName) {
+                        lastRoadName = path.name;
+                        let tooltip = L.tooltip({
+                            permanent: true,
+                            direction: "center",
+                            className: "tooltip",
+                            offset: [0, 0],
+                            opacity: 0.8,
+                            sticky: true,
+                        })
+                            .setContent(path.name)
+                            .setLatLng([
+                                row.result.nodes[path.start].lat,
+                                row.result.nodes[path.start].lon,
+                            ]);
+                        tooltipLayer.addLayer(tooltip);
+                    }
+                }
             });
             if (this.routeshowlayer != null) {
                 this.map.removeLayer(this.routeshowlayer);
             }
+            if (this.tooltipLayer != null) {
+                this.map.removeLayer(this.tooltipLayer);
+            }
             this.routeshowlayer = L.polyline(latlngs, {
                 color: "blue",
-            }).addTo(this.map);
+            }).addTo(toRaw(this.map));
+            this.tooltipLayer = tooltipLayer.addTo(toRaw(this.map));
             this.map.fitBounds(this.routeshowlayer.getBounds());
         },
         route_all() {
             let tasks = [];
+            let methods = 0;
+            if (this.methods.walking) {
+                methods += 1;
+            }
+            if (this.methods.cycling) {
+                methods += 2;
+            }
+            if (this.methods.driving) {
+                methods += 4;
+            }
+            if (this.methods.transit) {
+                methods += 24;
+            }
+            if (methods == 0) {
+                ElMessage.error("请选择至少一种寻路方式");
+                return;
+            }
             this.taskFinished = 0;
             for (let i = 0; i < this.points_to_route.length - 1; i++) {
                 tasks.push({
@@ -364,7 +460,9 @@ export default {
                     "http://local.tmysam.top:11222/find_path?start=" +
                         task.start +
                         "&end=" +
-                        task.end
+                        task.end +
+                        "&method=" +
+                        methods
                 )
                     .then((response) => response.json())
                     .then((data) => {
@@ -428,7 +526,7 @@ export default {
             this.searchMarker = L.marker([
                 row.location.split(",")[1],
                 row.location.split(",")[0],
-            ]).addTo(this.map);
+            ]).addTo(toRaw(this.map));
             this.map.setView(
                 [row.location.split(",")[1], row.location.split(",")[0]],
                 this.map.getZoom(),
@@ -562,35 +660,6 @@ export default {
                 return;
             }
             this.end = this.nearest_node_id_c;
-        },
-        get_path() {
-            if (this.start == 0 || this.end == 0) {
-                return;
-            }
-            if (this.start == this.end) {
-                return;
-            }
-            fetch(
-                "http://local.tmysam.top:11222/find_path?start=" +
-                    this.start +
-                    "&end=" +
-                    this.end
-            )
-                .then((response) => response.json())
-                .then((data) => {
-                    let latlngs = [];
-                    latlngs.push([
-                        data.nodes[data.path[0].start].lat,
-                        data.nodes[data.path[0].start].lon,
-                    ]);
-                    data.path.forEach((path) => {
-                        latlngs.push([
-                            data.nodes[path.end].lat,
-                            data.nodes[path.end].lon,
-                        ]);
-                    });
-                    L.polyline(latlngs, { color: "blue" }).addTo(this.map);
-                });
         },
     },
     mounted() {

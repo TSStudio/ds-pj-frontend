@@ -1,5 +1,6 @@
 {
     "dependencies": {
+        "@svgdotjs/svg.js": "^3.2.4",
         "dom-to-image-more": "^3.4.5",
         "element-plus": "^2.7.6",
         "image-js": "^0.35.6",

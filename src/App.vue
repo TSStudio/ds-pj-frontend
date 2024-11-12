@@ -61,9 +61,9 @@
                 </div>
                 <h2>点集</h2>
                 <el-table :data="points" stripe style="width: 100%">
-                    <el-table-column prop="type" label="类型" width="80" />
+                    <el-table-column prop="type" label="类型" width="60" />
                     <el-table-column prop="addr" label="地点" />
-                    <el-table-column prop="operation" label="操作">
+                    <el-table-column prop="operation" label="操作" width="100">
                         <template #default="scope"
                             ><el-button
                                 size="small"
@@ -148,9 +148,9 @@
                 </el-table>
                 <h2>点集</h2>
                 <el-table :data="points" stripe style="width: 100%">
-                    <el-table-column prop="type" label="类型" width="80" />
+                    <el-table-column prop="type" label="类型" width="60" />
                     <el-table-column prop="addr" label="地点" />
-                    <el-table-column prop="operation" label="操作" width="100">
+                    <el-table-column prop="operation" label="操作" width="95">
                         <template #default="scope"
                             ><el-button
                                 size="small"

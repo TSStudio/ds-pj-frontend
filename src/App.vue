@@ -211,53 +211,13 @@
     </div>-->
 </template>
 <script>
-import L, { marker } from "leaflet";
+import L from "leaflet";
 import { toRaw } from "vue";
-const WorkDistribution = function (options) {
-    let queue = [];
-    const pool = [];
-
-    // set up workers
-    for (var i = 0; i < (options.concurrency || 4); i++) {
-        const worker = new Worker(options.src);
-        worker.working = false;
-        pool.push(worker);
-    }
-
-    // execute the next item of work
-    const processQueue = function () {
-        // remove cancelled work items
-        queue = queue.filter((work) => !work.cancel);
-        if (!queue.length) return;
-        const nextWorker = pool.filter((x) => !x.working)[0];
-        if (!nextWorker) return;
-
-        var work = queue.pop();
-
-        nextWorker.working = true;
-        nextWorker.onmessage = function (e) {
-            nextWorker.working = false;
-            if (work.cancel) return; // don't bother to notify if cancelled
-            work.cb(e);
-            processQueue();
-        };
-        nextWorker.postMessage(work.item);
-    };
-
-    return {
-        push: function (item, cb) {
-            const work = { item: item, cb: cb, cancel: false };
-            queue.push(work);
-            processQueue();
-            return () => (work.cancel = true);
-        },
-    };
-};
 
 const options = {
     center: [31.24555, 121.506294],
     tileSize: 256,
-    depth: 16, // precision is lost at any greater level
+    depth: 18,
 }; //center: [31.24555, 121.506294],
 //            zoom: 13,
 
@@ -267,7 +227,6 @@ export default {
         return {
             activeName: "point_manager",
             map: null,
-            workerPool: null,
             mouse_x: 0,
             mouse_y: 0,
             mouse_lat: 0,
@@ -301,6 +260,9 @@ export default {
                 transit: false,
                 subway: false,
             },
+            isMoving: false,
+            imageOverlay: null,
+            imageOverlayLoadLock: false,
         };
     },
     methods: {
@@ -543,7 +505,7 @@ export default {
             fetch(
                 "https://restapi.amap.com/v5/place/text?key=&keywords=" +
                     addr_input +
-                    "&region=310000&city_limit=true"
+                    "&region=310000&city_limit=false"
             )
                 .then((response) => response.json())
                 .then((data) => {
@@ -714,14 +676,42 @@ export default {
             }
             this.end = this.nearest_node_id_c;
         },
+        upd_text(force = false) {
+            if (!this.isMoving && !force) {
+                return;
+            }
+            if (this.imageOverlayLoadLock) {
+                return;
+            }
+            let width = document.getElementById("map").offsetWidth;
+            let height = document.getElementById("map").offsetHeight;
+            // this.imageOverlay.setUrl(
+            //     "http://local.tmysam.top:11223/ds/text_whole.php?lat_begin=...&width=...&height=..."
+            // );
+            //{"_southWest":{"lat":39.9017036549427,"lng":116.42443656921387},"_northEast":{"lat":39.963898617960986,"lng":116.5034866333008}}
+            let bounds = toRaw(this.map).getBounds();
+            let lat_begin = bounds._northEast.lat;
+            let lon_begin = bounds._southWest.lng;
+            let lat_end = bounds._southWest.lat;
+            let lon_end = bounds._northEast.lng;
+            fetch(
+                `http://local.tmysam.top:11223/ds/text_whole.php?lat_begin=${lat_begin}&lon_begin=${lon_begin}&lat_end=${lat_end}&lon_end=${lon_end}&width=${width}&height=${height}&datauri`
+            )
+                .then((response) => response.text())
+                .then((text) => {
+                    toRaw(this.imageOverlay).setUrl(text);
+                    toRaw(this.imageOverlay).setBounds([
+                        [lat_begin, lon_begin],
+                        [lat_end, lon_end],
+                    ]);
+                })
+                .finally(() => {
+                    this.imageOverlayLoadLock = false;
+                });
+        },
     },
     mounted() {
         //document.addEventListener("mousemove", this.handleMouseMove);
-        var workPool = WorkDistribution({
-            concurrency: navigator.hardwareConcurrency,
-            src: "worker.js",
-        });
-
         this.map = L.map("map", {
             maxZoom: options.depth,
             attributionControl: false,
@@ -729,119 +719,65 @@ export default {
         var AttrControl = L.control.attribution().addTo(this.map);
         //AttrControl.setPrefix('<a href="https://leafletjs.com/">Leaflet</a>');
         AttrControl.setPrefix("");
-        L.TileLayer.Fractal = L.TileLayer.extend({
-            initialize: function () {
-                this.on("tileunload", (e) => e.tile.cancel());
-            },
-            setType: function (value) {
-                this._type = value;
-            },
-            getAttribution: function () {
-                return "<a href='https://www.tmysam.top/' target='_blank'>TSStudio GIS</a>";
-            },
-            createTile: function (coords, done) {
-                const tile = document.createElement("img");
-                L.DomEvent.on(
-                    tile,
-                    "load",
-                    L.Util.bind(this._tileOnLoad, this, done, tile)
-                );
-                L.DomEvent.on(
-                    tile,
-                    "error",
-                    L.Util.bind(this._tileOnError, this, done, tile)
-                );
-                tile.setAttribute("role", "presentation");
-                tile.cancel = workPool.push(
-                    {
-                        coords: coords,
-                        id: tile.id,
-                        type: "basic",
-                    },
-                    (e) => {
-                        const canvas = document.createElement("canvas");
-                        canvas.height = canvas.width = options.tileSize;
-
-                        const ctx = canvas.getContext("2d");
-                        ctx.putImageData(e.data.imageData, 0, 0);
-
-                        tile.src = canvas.toDataURL();
-                    }
-                );
-                return tile;
-            },
-        });
-        L.TileLayer.FractalOverlay = L.TileLayer.extend({
-            initialize: function () {
-                this.on("tileunload", (e) => e.tile.cancel());
-            },
-            setType: function (value) {
-                this._type = value;
-            },
-            getAttribution: function () {
-                return "<a href='https://www.tmysam.top/' target='_blank'>TSStudio GIS</a>";
-            },
-            createTile: function (coords, done) {
-                const tile = document.createElement("img");
-                L.DomEvent.on(
-                    tile,
-                    "load",
-                    L.Util.bind(this._tileOnLoad, this, done, tile)
-                );
-                L.DomEvent.on(
-                    tile,
-                    "error",
-                    L.Util.bind(this._tileOnError, this, done, tile)
-                );
-                tile.setAttribute("role", "presentation");
-                tile.cancel = workPool.push(
-                    {
-                        coords: coords,
-                        id: tile.id,
-                        type: "basic-overlay",
-                    },
-                    (e) => {
-                        const canvas = document.createElement("canvas");
-                        canvas.height = canvas.width = options.tileSize;
-
-                        const ctx = canvas.getContext("2d");
-                        ctx.putImageData(e.data.imageData, 0, 0);
-
-                        tile.src = canvas.toDataURL();
-                    }
-                );
-                return tile;
-            },
-        });
-        L.tileLayer.path = () => {
-            var layer = new L.TileLayer.Fractal();
-            layer.setType("mandlebrot");
-            return layer;
-        };
-        L.tileLayer.overlaypath = () => {
-            var layer = new L.TileLayer.FractalOverlay();
-            layer.setType("mandlebrot");
-            return layer;
-        };
-        const path = L.tileLayer.path();
-        const overlaypath = L.tileLayer.overlaypath();
         const satellite_layer = L.tileLayer(
             "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
             {
                 maxZoom: 19,
                 attribution:
-                    '&copy; <a href="https://www.google.com/maps">Google Maps</a>',
+                    '&copy; <a href="https://www.google.com/maps" target="_blank">Google Maps</a>',
             }
-        );
-
-        const hybrid = L.layerGroup([satellite_layer, overlaypath]);
-        var layers = {
-            地图: path,
+        ).setZIndex(0);
+        const dev = L.tileLayer(
+            "http://local.tmysam.top:11223/ds/base_tile.php?x={x}&y={y}&z={z}",
+            {
+                maxZoom: 19,
+                attribution:
+                    "&copy; <a href='https://www.tmysam.top/' target='_blank'>TSStudio PHP SVG Renderer</a>",
+            }
+        ).setZIndex(0);
+        const neoneopath = L.tileLayer(
+            "http://local.tmysam.top:11223/ds/road_tile.php?x={x}&y={y}&z={z}",
+            {
+                maxZoom: 19,
+                attribution:
+                    "&copy; <a href='https://www.tmysam.top/' target='_blank'>TSStudio PHP SVG Renderer</a>",
+            }
+        ).setZIndex(0);
+        var baseMaps = {
             卫星: satellite_layer,
-            混合: hybrid,
+            新版渲染: dev,
         };
-        const layerControl = L.control.layers(layers).addTo(toRaw(this.map));
-        hybrid.addTo(toRaw(this.map));
+
+        var overlayMaps = {
+            船新路网附加: neoneopath,
+        };
+
+        this.imageOverlay = L.imageOverlay("", [
+            [0, 0],
+            [0, 0],
+        ]).addTo(this.map);
+        this.map.on("zoomstart", (e) => {
+            this.isMoving = true;
+        });
+        this.map.on("movestart", (e) => {
+            this.isMoving = true;
+        });
+        this.map.on("zoomend", (e) => {
+            this.isMoving = false;
+            this.upd_text(true);
+        });
+        this.map.on("moveend", (e) => {
+            this.isMoving = false;
+            this.upd_text(true);
+        });
+        this.upd_text(true);
+
+        const layerControl = L.control
+            .layers(baseMaps, overlayMaps)
+            .addTo(toRaw(this.map));
+        dev.addTo(toRaw(this.map));
+        neoneopath.addTo(toRaw(this.map));
+        L.control.scale().addTo(toRaw(this.map));
 
         this.map.on("click", (e) => {
             this.mouse_lat_c = e.latlng.lat;
@@ -854,6 +790,16 @@ export default {
         });
         this.map.on("zoomend", (e) => {
             this.zoomlevel = this.map.getZoom();
+        });
+        this.map.on("moveend", (e) => {
+            localStorage.setItem(
+                "map_center",
+                JSON.stringify(this.map.getCenter())
+            );
+            localStorage.setItem(
+                "map_zoom",
+                JSON.stringify(this.map.getZoom())
+            );
         });
         if (localStorage.getItem("points") != null) {
             this.points = JSON.parse(localStorage.getItem("points"));
@@ -870,6 +816,12 @@ export default {
         }
         if (localStorage.getItem("methods") != null) {
             this.methods = JSON.parse(localStorage.getItem("methods"));
+        }
+        if (localStorage.getItem("map_center") != null) {
+            this.map.setView(
+                JSON.parse(localStorage.getItem("map_center")),
+                JSON.parse(localStorage.getItem("map_zoom"))
+            );
         }
         let r_control = document.getElementById("r-control");
         r_control.addEventListener("mousedown", (e) => {

@@ -4,7 +4,7 @@ const { ElementPlusResolver } = require("unplugin-vue-components/resolvers");
 const { EnvironmentPlugin } = require("webpack");
 
 module.exports = {
-    entry: { bundle: "./src/main.js", worker: "./src/worker.js" },
+    entry: { bundle: "./src/main.js" },
     module: {
         rules: [
             { test: /\.vue$/, use: "vue-loader" },

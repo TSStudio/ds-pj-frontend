@@ -113,9 +113,25 @@
                         size="large"
                     />
                 </div>
-                <el-button type="primary" @click="route_all()"
-                    >全部寻路</el-button
+                <el-button type="primary" @click="route_all(false)"
+                    >全部寻路（Dijkstra）</el-button
                 >
+                <el-button type="primary" @click="route_all(true)"
+                    >全部寻路（启发式）</el-button
+                >
+                <div class="heuristic-factor-slider">
+                    <span
+                        class="demonstration"
+                        title="系数越小越准确，但是慢；系数越大越快，但是准确性略有下降。推荐0.7-1.2。"
+                        >启发式系数：{{
+                            (heuristic_factor / 50).toFixed(2)
+                        }}</span
+                    >
+                    <el-slider
+                        v-model="heuristic_factor"
+                        :format-tooltip="formatTooltip"
+                    />
+                </div>
                 <el-table :data="points_to_route" stripe style="width: 100%">
                     <el-table-column prop="addr" label="地点" />
                     <el-table-column prop="operation" label="操作" width="200">
@@ -176,6 +192,9 @@
                     :disabled="taskFinished != tasks.length"
                     >查看全部</el-button
                 >
+                <el-button type="primary" @click="hide_route()"
+                    >隐藏路径显示</el-button
+                >
                 <el-table :data="tasks" stripe style="width: 100%">
                     <el-table-column prop="start_name" label="起点" />
                     <el-table-column prop="end_name" label="终点" />
@@ -198,17 +217,6 @@
         <div id="r-control" class="on">&lt;</div>
         <div id="map"></div>
     </div>
-    <!--<div id="debug-layer">
-        <div id="cursor">
-            lat:{{ mouse_lat }} lon:{{ mouse_lon }} z:{{ zoomlevel }}
-        </div>
-        <div id="cursor">
-            lat:{{ mouse_lat_c }} lon:{{ mouse_lon_c }}, nearest:{{
-                nearest_node_id_c
-            }}, distance:{{ nearest_node_distance_c }}
-        </div>
-        <div id="cursor">start:{{ start }}, end:{{ end }}</div>
-    </div>-->
 </template>
 <script>
 import L from "leaflet";
@@ -263,6 +271,7 @@ export default {
             isMoving: false,
             imageOverlay: null,
             imageOverlayLoadLock: false,
+            heuristic_factor: 40,
         };
     },
     methods: {
@@ -275,75 +284,6 @@ export default {
             let temp = this.points_to_route[index];
             this.points_to_route[index] = this.points_to_route[index + 1];
             this.points_to_route[index + 1] = temp;
-        },
-        look_full_route() {
-            let latlngs = [];
-            let lastmethod = 0;
-            let lastRoadName = "";
-            let routeLayer = L.featureGroup();
-            latlngs.push([
-                this.tasks[0].result.nodes[this.tasks[0].result.path[0].start]
-                    .lat,
-                this.tasks[0].result.nodes[this.tasks[0].result.path[0].start]
-                    .lon,
-            ]);
-            let tooltipLayer = L.layerGroup();
-            this.tasks.forEach((task) => {
-                if (task.result.path == undefined) {
-                    return;
-                }
-                if (task.result.path.length == 0) {
-                    return;
-                }
-                task.result.path.forEach((path) => {
-                    if (path.method != lastmethod) {
-                        L.polyline(latlngs, {
-                            color: this.getcolor(lastmethod),
-                        }).addTo(routeLayer);
-                        lastmethod = path.method;
-                        latlngs = [];
-                        latlngs.push([
-                            task.result.nodes[path.start].lat,
-                            task.result.nodes[path.start].lon,
-                        ]);
-                    }
-                    latlngs.push([
-                        task.result.nodes[path.end].lat,
-                        task.result.nodes[path.end].lon,
-                    ]);
-                    if (path.name) {
-                        if (path.name != lastRoadName) {
-                            lastRoadName = path.name;
-                            let tooltip = L.tooltip({
-                                permanent: true,
-                                direction: "center",
-                                className: "tooltip",
-                                offset: [0, 0],
-                                opacity: 0.8,
-                                sticky: true,
-                            })
-                                .setContent(path.name)
-                                .setLatLng([
-                                    task.result.nodes[path.start].lat,
-                                    task.result.nodes[path.start].lon,
-                                ]);
-                            tooltipLayer.addLayer(tooltip);
-                        }
-                    }
-                });
-            });
-            L.polyline(latlngs, {
-                color: this.getcolor(lastmethod),
-            }).addTo(routeLayer);
-            if (this.routeshowlayer != null) {
-                this.map.removeLayer(this.routeshowlayer);
-            }
-            if (this.tooltipLayer != null) {
-                this.map.removeLayer(this.tooltipLayer);
-            }
-            this.routeshowlayer = routeLayer.addTo(this.map);
-            this.tooltipLayer = tooltipLayer.addTo(this.map);
-            this.map.fitBounds(this.routeshowlayer.getBounds());
         },
         getcolor(method) {
             switch (method) {
@@ -361,23 +301,25 @@ export default {
                     return "#000000";
             }
         },
-        lookRoute(index, row) {
-            if (row.result.path == undefined) {
-                return;
-            }
-            if (row.result.path.length == 0) {
-                return;
-            }
+        look_route_raw(nodes, paths, routeLayer, tooltipLayer) {
             let latlngs = [];
             let lastmethod = 0;
             let lastRoadName = "";
-            let routeLayer = L.featureGroup();
+            let totdistance = 0;
+            let halfdistance = 0;
+            let halfdistanceIndex = 0;
+            if (paths == undefined) {
+                return;
+            }
+            if (paths.length == 0) {
+                return;
+            }
             latlngs.push([
-                row.result.nodes[row.result.path[0].start].lat,
-                row.result.nodes[row.result.path[0].start].lon,
+                nodes[paths[0].start].lat,
+                nodes[paths[0].start].lon,
             ]);
-            let tooltipLayer = L.layerGroup();
-            row.result.path.forEach((path) => {
+            for (let i = 0; i < paths.length; i++) {
+                let path = paths[i];
                 if (path.method != lastmethod) {
                     L.polyline(latlngs, {
                         color: this.getcolor(lastmethod),
@@ -385,17 +327,13 @@ export default {
                     lastmethod = path.method;
                     latlngs = [];
                     latlngs.push([
-                        row.result.nodes[path.start].lat,
-                        row.result.nodes[path.start].lon,
+                        nodes[path.start].lat,
+                        nodes[path.start].lon,
                     ]);
                 }
-                latlngs.push([
-                    row.result.nodes[path.end].lat,
-                    row.result.nodes[path.end].lon,
-                ]);
+                latlngs.push([nodes[path.end].lat, nodes[path.end].lon]);
                 if (path.name) {
                     if (path.name != lastRoadName) {
-                        lastRoadName = path.name;
                         let tooltip = L.tooltip({
                             permanent: true,
                             direction: "center",
@@ -404,29 +342,68 @@ export default {
                             opacity: 0.8,
                             sticky: true,
                         })
-                            .setContent(path.name)
+                            .setContent(lastRoadName)
                             .setLatLng([
-                                row.result.nodes[path.start].lat,
-                                row.result.nodes[path.start].lon,
+                                nodes[paths[halfdistanceIndex].start].lat,
+                                nodes[paths[halfdistanceIndex].start].lon,
                             ]);
                         tooltipLayer.addLayer(tooltip);
+                        totdistance = 0;
+                        halfdistance = 0;
+                        halfdistanceIndex = i;
+                        lastRoadName = path.name;
                     }
                 }
-            });
+                totdistance += path.distance;
+                while (halfdistance < totdistance / 2) {
+                    halfdistance += paths[halfdistanceIndex].distance;
+                    halfdistanceIndex += 1;
+                }
+            }
             L.polyline(latlngs, {
                 color: this.getcolor(lastmethod),
             }).addTo(routeLayer);
+        },
+        hide_route() {
             if (this.routeshowlayer != null) {
                 this.map.removeLayer(this.routeshowlayer);
             }
             if (this.tooltipLayer != null) {
                 this.map.removeLayer(this.tooltipLayer);
             }
+        },
+        look_full_route() {
+            let routeLayer = L.featureGroup();
+            let tooltipLayer = L.layerGroup();
+            this.tasks.forEach((task) => {
+                this.look_route_raw(
+                    task.result.nodes,
+                    task.result.path,
+                    routeLayer,
+                    tooltipLayer
+                );
+            });
+            this.hide_route();
             this.routeshowlayer = routeLayer.addTo(this.map);
             this.tooltipLayer = tooltipLayer.addTo(this.map);
             this.map.fitBounds(this.routeshowlayer.getBounds());
         },
-        route_all() {
+
+        lookRoute(index, row) {
+            let routeLayer = L.featureGroup();
+            let tooltipLayer = L.layerGroup();
+            this.look_route_raw(
+                row.result.nodes,
+                row.result.path,
+                routeLayer,
+                tooltipLayer
+            );
+            this.hide_route();
+            this.routeshowlayer = routeLayer.addTo(this.map);
+            this.tooltipLayer = tooltipLayer.addTo(this.map);
+            this.map.fitBounds(this.routeshowlayer.getBounds());
+        },
+        route_all(heuristic) {
             let tasks = [];
             let methods = 0;
             if (this.methods.walking) {
@@ -471,14 +448,17 @@ export default {
                     return;
                 }
                 task.status = "进行中";
-                fetch(
+                let url =
                     "http://local.tmysam.top:11222/find_path?start=" +
-                        task.start +
-                        "&end=" +
-                        task.end +
-                        "&method=" +
-                        methods
-                )
+                    task.start +
+                    "&end=" +
+                    task.end +
+                    "&method=" +
+                    methods;
+                if (heuristic) {
+                    url += "&heuristic_factor=" + this.heuristic_factor / 50;
+                }
+                fetch(url)
                     .then((response) => response.json())
                     .then((data) => {
                         task.result = data;
@@ -486,6 +466,9 @@ export default {
                         this.taskFinished += 1;
                     });
             });
+        },
+        formatTooltip(val) {
+            return val / 50;
         },
         removeRoutingPoint(index, row) {
             this.points_to_route.splice(index, 1);
@@ -685,10 +668,6 @@ export default {
             }
             let width = document.getElementById("map").offsetWidth;
             let height = document.getElementById("map").offsetHeight;
-            // this.imageOverlay.setUrl(
-            //     "http://local.tmysam.top:11223/ds/text_whole.php?lat_begin=...&width=...&height=..."
-            // );
-            //{"_southWest":{"lat":39.9017036549427,"lng":116.42443656921387},"_northEast":{"lat":39.963898617960986,"lng":116.5034866333008}}
             let bounds = toRaw(this.map).getBounds();
             let lat_begin = bounds._northEast.lat;
             let lon_begin = bounds._southWest.lng;

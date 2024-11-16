@@ -29,7 +29,6 @@ body {
     padding: 15px;
     min-width: 0;
     overflow: auto;
-    user-select: none;
 }
 #r-main {
     flex: 1;
@@ -51,6 +50,7 @@ body {
     box-sizing: border-box;
     opacity: 0.5;
     transition: opacity 0.3s ease-in-out;
+    user-select: none;
 }
 #r-control:hover {
     opacity: 0.9;
@@ -90,4 +90,13 @@ body {
 }
 svg {
     overflow: visible;
+}
+.route-view-row {
+    padding: 10px;
+}
+.route-view-row:nth-child(odd) {
+    background-color: #f0f3fa;
+}
+.route-view-row:nth-child(even) {
+    background-color: #e3e8f0;
 }

@@ -179,7 +179,7 @@
                 <el-table :data="points" stripe style="width: 100%">
                     <el-table-column prop="type" label="类型" width="60" />
                     <el-table-column prop="addr" label="地点" />
-                    <el-table-column prop="operation" label="操作" width="95">
+                    <el-table-column prop="operation" label="操作" width="100">
                         <template #default="scope"
                             ><el-button
                                 size="small"
@@ -203,26 +203,44 @@
                     type="primary"
                     @click="look_full_route()"
                     :disabled="taskFinished != tasks.length"
+                    v-show="tasks.length > 0"
                     >查看全部</el-button
                 >
-                <el-button type="primary" @click="hide_route()"
+                <el-button
+                    type="primary"
+                    @click="hide_route()"
+                    v-show="routeshowlayer"
                     >隐藏路径显示</el-button
+                >
+                <el-button
+                    type="primary"
+                    @click="hide_debug_polygon()"
+                    v-show="routing_debug_layer"
+                    >隐藏调试多边形</el-button
                 >
                 <el-table :data="tasks" stripe style="width: 100%">
                     <el-table-column prop="start_name" label="起点" />
                     <el-table-column prop="end_name" label="终点" />
                     <el-table-column prop="status" label="状态" width="70" />
-                    <el-table-column prop="operation" label="操作" width="70">
+                    <el-table-column prop="operation" label="操作" width="80">
                         <template #default="scope"
                             ><el-button
                                 size="small"
                                 @click="lookRoute(scope.$index, scope.row)"
                                 :disabled="scope.row.status != '完成'"
                                 >查看</el-button
+                            ><el-button
+                                size="small"
+                                @click="vier_r_details(scope.$index, scope.row)"
+                                :disabled="scope.row.status != '完成'"
+                                >详情</el-button
                             ></template
                         >
                     </el-table-column>
                 </el-table>
+            </el-tab-pane>
+            <el-tab-pane label="详情" name="route_details">
+                <routeviewer :route="view_route_details" />
             </el-tab-pane>
         </el-tabs>
     </div>
@@ -234,6 +252,8 @@
 <script>
 import L from "leaflet";
 import { toRaw } from "vue";
+import route_helper from "./route_helper";
+import routeviewer from "./route_viewer.vue";
 
 const options = {
     center: [31.24555, 121.506294],
@@ -340,6 +360,7 @@ export default {
             imageOverlay: null,
             imageOverlayLoadLock: false,
             heuristic_factor: 40,
+            view_route_details: [],
         };
     },
     methods: {
@@ -438,19 +459,27 @@ export default {
                 latlngs.push([nodes[i].lat, nodes[i].lon]);
             }
             if (this.routing_debug_layer != null) {
-                this.map.removeLayer(this.routing_debug_layer);
+                this.hide_debug_polygon();
             }
             this.routing_debug_layer = L.polygon(latlngs, {
-                color: "#ff0000",
+                color: "#ff00cc",
                 opacity: 0.5,
             }).addTo(this.map);
         },
         hide_route() {
             if (this.routeshowlayer != null) {
                 this.map.removeLayer(this.routeshowlayer);
+                this.routeshowlayer = null;
             }
             if (this.tooltipLayer != null) {
                 this.map.removeLayer(this.tooltipLayer);
+                this.tooltipLayer = null;
+            }
+        },
+        hide_debug_polygon() {
+            if (this.routing_debug_layer != null) {
+                this.map.removeLayer(this.routing_debug_layer);
+                this.routing_debug_layer = null;
             }
         },
         look_full_route() {
@@ -486,6 +515,13 @@ export default {
                 this.look_routing_debug_polygon(row.result.nodes_ch);
             }
             this.map.fitBounds(this.routeshowlayer.getBounds());
+        },
+        vier_r_details(index, row) {
+            this.view_route_details = route_helper.getRouteDetails(
+                row.result.nodes,
+                row.result.path
+            );
+            this.activeName = "route_details";
         },
         route_all(heuristic) {
             let tasks = [];
@@ -944,6 +980,9 @@ export default {
             },
             deep: true,
         },
+    },
+    components: {
+        routeviewer,
     },
 };
 </script>

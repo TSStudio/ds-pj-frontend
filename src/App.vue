@@ -132,6 +132,19 @@
                         :format-tooltip="formatTooltip"
                     />
                 </div>
+                <el-switch
+                    v-model="routing_debug"
+                    active-text="调试"
+                    inactive-text="正常"
+                />
+                <el-select
+                    v-model="routing_key"
+                    placeholder="Select"
+                    style="width: 150px; margin-left: 20px"
+                >
+                    <el-option label="时间优先" value="time" />
+                    <el-option label="路程优先" value="distance" />
+                </el-select>
                 <el-table :data="points_to_route" stripe style="width: 100%">
                     <el-table-column prop="addr" label="地点" />
                     <el-table-column prop="operation" label="操作" width="200">
@@ -229,6 +242,58 @@ const options = {
 }; //center: [31.24555, 121.506294],
 //            zoom: 13,
 
+L.TileLayer.SVG = L.TileLayer.extend({
+    createTile: function (coords, done) {
+        //var tile = document.createElement("div");
+
+        // tile.setAttribute("role", "presentation");
+        // tile.classList.add("svg-tile");
+
+        // fetch(this.getTileUrl(coords))
+        //     .then((response) => {
+        //         if (!response.ok) {
+        //             throw new Error("Network response was not ok");
+        //         }
+        //         return response.text();
+        //     })
+        //     .then((svgText) => {
+        //         const parser = new DOMParser();
+        //         const svg = parser.parseFromString(
+        //             svgText,
+        //             "image/svg+xml"
+        //         ).documentElement;
+        //         tile.appendChild(svg);
+        //         done(null, tile);
+        //     })
+        //     .catch((error) => {
+        //         done(error, tile);
+        //     });
+        // let obj = document.createElement("object");
+        // obj.setAttribute("type", "image/svg+xml");
+        // obj.setAttribute("data", this.getTileUrl(coords));
+        // obj.setAttribute("width", options.tileSize);
+        // obj.setAttribute("height", options.tileSize);
+        // tile.appendChild(obj);
+        let svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("role", "presentation");
+        svg.classList.add("svg-tile");
+        svg.setAttribute("width", options.tileSize);
+        svg.setAttribute("height", options.tileSize);
+        fetch(this.getTileUrl(coords))
+            .then((response) => response.text())
+            .then((data) => {
+                const parser = new DOMParser();
+
+                svg.innerHTML = parser.parseFromString(
+                    data,
+                    "image/svg+xml"
+                ).documentElement.innerHTML;
+                done(null, svg);
+            });
+        return svg;
+    },
+});
+
 export default {
     name: "App",
     data() {
@@ -254,6 +319,9 @@ export default {
             addr_input: "",
             search_result: [],
             points_to_route: [],
+            routing_debug: false,
+            routing_debug_layer: null,
+            routing_key: "time",
             tasks: [],
             taskFinished: 0,
             searching: false,
@@ -364,6 +432,19 @@ export default {
                 color: this.getcolor(lastmethod),
             }).addTo(routeLayer);
         },
+        look_routing_debug_polygon(nodes) {
+            let latlngs = [];
+            for (let i = 0; i < nodes.length; i++) {
+                latlngs.push([nodes[i].lat, nodes[i].lon]);
+            }
+            if (this.routing_debug_layer != null) {
+                this.map.removeLayer(this.routing_debug_layer);
+            }
+            this.routing_debug_layer = L.polygon(latlngs, {
+                color: "#ff0000",
+                opacity: 0.5,
+            }).addTo(this.map);
+        },
         hide_route() {
             if (this.routeshowlayer != null) {
                 this.map.removeLayer(this.routeshowlayer);
@@ -401,6 +482,9 @@ export default {
             this.hide_route();
             this.routeshowlayer = routeLayer.addTo(this.map);
             this.tooltipLayer = tooltipLayer.addTo(this.map);
+            if (row.result.nodes_ch) {
+                this.look_routing_debug_polygon(row.result.nodes_ch);
+            }
             this.map.fitBounds(this.routeshowlayer.getBounds());
         },
         route_all(heuristic) {
@@ -457,6 +541,14 @@ export default {
                     methods;
                 if (heuristic) {
                     url += "&heuristic_factor=" + this.heuristic_factor / 50;
+                }
+                if (this.routing_key == "time") {
+                    url += "&key=0";
+                } else {
+                    url += "&key=1";
+                }
+                if (this.routing_debug) {
+                    url += "&view_search_range";
                 }
                 fetch(url)
                     .then((response) => response.json())
@@ -694,6 +786,9 @@ export default {
         this.map = L.map("map", {
             maxZoom: options.depth,
             attributionControl: false,
+            zoomDelta: 1,
+            zoomSnap: 0.25,
+            wheelPxPerZoomLevel: 15,
         }).setView(options.center, 13);
         var AttrControl = L.control.attribution().addTo(this.map);
         //AttrControl.setPrefix('<a href="https://leafletjs.com/">Leaflet</a>');
@@ -707,6 +802,7 @@ export default {
             }
         ).setZIndex(0);
         const dev = L.tileLayer(
+            //const dev = new L.TileLayer.SVG(
             "http://local.tmysam.top:11223/ds/base_tile.php?x={x}&y={y}&z={z}",
             {
                 maxZoom: 19,
@@ -715,6 +811,7 @@ export default {
             }
         ).setZIndex(0);
         const neoneopath = L.tileLayer(
+            //const neoneopath = new L.TileLayer.SVG(
             "http://local.tmysam.top:11223/ds/road_tile.php?x={x}&y={y}&z={z}",
             {
                 maxZoom: 19,

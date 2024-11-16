@@ -85,3 +85,9 @@ body {
 .heuristic-factor-slider {
     padding: 25px;
 }
+.svg-tile {
+    overflow: visible;
+}
+svg {
+    overflow: visible;
+}

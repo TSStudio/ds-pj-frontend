@@ -55,10 +55,13 @@ export default {
      */
     getRouteDetails(nodes, paths) {
         let result = [];
+        let pathPak = [];
         if (paths.length == 0) {
             return result;
         }
         let lastRoadName = paths[0].name;
+        let lastNodeName = "";
+        let lastStart = "";
         let totdistance = paths[0].distance;
         let lastSegmentTurn = "出发";
         let lastDirection = this.getDirection(
@@ -71,28 +74,44 @@ export default {
             let node1 = nodes[path.start];
             let node2 = nodes[path.end];
             let direction = this.getDirection(node1, node2);
+            if (node1.name != undefined) {
+                lastNodeName = node1.name;
+            }
             if (path.name != undefined) {
                 if (path.name != lastRoadName) {
                     result.push({
+                        from: lastStart,
+                        to: lastNodeName,
                         roadName: lastRoadName,
                         distance: totdistance,
                         direction: lastSegmentTurn,
                         method: lastMethod,
+                        paths: pathPak,
                     });
                     lastSegmentTurn = this.getTurning(lastDirection, direction);
                     lastRoadName = path.name;
                     totdistance = path.distance;
+                    lastStart = "";
+                    pathPak = [];
                 }
+
+                lastMethod = path.method;
+            }
+            if (lastStart == "" && node1.name != undefined) {
+                lastStart = node1.name;
             }
             totdistance += path.distance;
             lastDirection = direction;
-            lastMethod = path.method;
+            pathPak.push(path);
         }
         result.push({
+            from: lastStart,
+            to: lastNodeName,
             roadName: lastRoadName,
             distance: totdistance,
             direction: lastSegmentTurn,
             method: lastMethod,
+            paths: pathPak,
         });
         return result;
     },

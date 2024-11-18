@@ -240,7 +240,11 @@
                 </el-table>
             </el-tab-pane>
             <el-tab-pane label="详情" name="route_details">
-                <routeviewer :route="view_route_details" />
+                <routeviewer
+                    :paths="view_route_paths"
+                    :nodes="view_route_nodes"
+                    @look="lookRoute"
+                />
             </el-tab-pane>
         </el-tabs>
     </div>
@@ -252,7 +256,7 @@
 <script>
 import L from "leaflet";
 import { toRaw } from "vue";
-import route_helper from "./route_helper";
+
 import routeviewer from "./route_viewer.vue";
 
 const options = {
@@ -360,7 +364,8 @@ export default {
             imageOverlay: null,
             imageOverlayLoadLock: false,
             heuristic_factor: 40,
-            view_route_details: [],
+            view_route_paths: [],
+            view_route_nodes: {},
         };
     },
     methods: {
@@ -467,6 +472,7 @@ export default {
             }).addTo(this.map);
         },
         hide_route() {
+            this.hide_debug_polygon();
             if (this.routeshowlayer != null) {
                 this.map.removeLayer(this.routeshowlayer);
                 this.routeshowlayer = null;
@@ -517,10 +523,8 @@ export default {
             this.map.fitBounds(this.routeshowlayer.getBounds());
         },
         vier_r_details(index, row) {
-            this.view_route_details = route_helper.getRouteDetails(
-                row.result.nodes,
-                row.result.path
-            );
+            this.view_route_nodes = row.result.nodes;
+            this.view_route_paths = row.result.path;
             this.activeName = "route_details";
         },
         route_all(heuristic) {

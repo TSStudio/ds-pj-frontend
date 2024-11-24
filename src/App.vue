@@ -137,6 +137,11 @@
                     active-text="调试"
                     inactive-text="正常"
                 />
+                <el-switch
+                    v-model="routing_jump"
+                    active-text="跳跃"
+                    inactive-text="正常"
+                />
                 <el-select
                     v-model="routing_key"
                     placeholder="Select"
@@ -344,6 +349,7 @@ export default {
             search_result: [],
             points_to_route: [],
             routing_debug: false,
+            routing_jump: false,
             routing_debug_layer: null,
             routing_key: "time",
             tasks: [],
@@ -363,7 +369,7 @@ export default {
             isMoving: false,
             imageOverlay: null,
             imageOverlayLoadLock: false,
-            heuristic_factor: 40,
+            heuristic_factor: 55,
             view_route_paths: [],
             view_route_nodes: {},
         };
@@ -458,18 +464,30 @@ export default {
                 color: this.getcolor(lastmethod),
             }).addTo(routeLayer);
         },
-        look_routing_debug_polygon(nodes) {
+        look_routing_debug_polygon(nodes, force = false, color = "#ff00cc") {
             let latlngs = [];
             for (let i = 0; i < nodes.length; i++) {
                 latlngs.push([nodes[i].lat, nodes[i].lon]);
             }
-            if (this.routing_debug_layer != null) {
+            if (this.routing_debug_layer != null && !force) {
                 this.hide_debug_polygon();
             }
-            this.routing_debug_layer = L.polygon(latlngs, {
-                color: "#ff00cc",
+
+            let polygon_layer = L.featureGroup();
+            // this.routing_debug_layer = L.polygon(latlngs, {
+            //     color: color,
+            //     opacity: 0.5,
+            // }).addTo(this.map);
+            let polygon = L.polygon(latlngs, {
+                color: color,
                 opacity: 0.5,
-            }).addTo(this.map);
+            }).addTo(polygon_layer);
+            if (this.routing_debug_layer == null) {
+                this.routing_debug_layer = polygon_layer.addTo(this.map);
+            } else {
+                this.routing_debug_layer.addLayer(polygon);
+            }
+            //polygon_layer.addTo(this.map);
         },
         hide_route() {
             this.hide_debug_polygon();
@@ -519,6 +537,13 @@ export default {
             this.tooltipLayer = tooltipLayer.addTo(this.map);
             if (row.result.nodes_ch) {
                 this.look_routing_debug_polygon(row.result.nodes_ch);
+            }
+            if (row.result.nodes_ch2) {
+                this.look_routing_debug_polygon(
+                    row.result.nodes_ch2,
+                    true,
+                    "#cc00ff"
+                );
             }
             this.map.fitBounds(this.routeshowlayer.getBounds());
         },
@@ -589,6 +614,9 @@ export default {
                 }
                 if (this.routing_debug) {
                     url += "&view_search_range";
+                }
+                if (this.routing_jump) {
+                    url += "&jump";
                 }
                 fetch(url)
                     .then((response) => response.json())

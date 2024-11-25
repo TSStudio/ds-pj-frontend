@@ -232,12 +232,12 @@
                             ><el-button
                                 size="small"
                                 @click="lookRoute(scope.$index, scope.row)"
-                                :disabled="scope.row.status != '完成'"
+                                :disabled="scope.row.view_ok == false"
                                 >查看</el-button
                             ><el-button
                                 size="small"
                                 @click="vier_r_details(scope.$index, scope.row)"
-                                :disabled="scope.row.status != '完成'"
+                                :disabled="scope.row.view_ok == false"
                                 >详情</el-button
                             ></template
                         >
@@ -553,6 +553,8 @@ export default {
             this.activeName = "route_details";
         },
         route_all(heuristic) {
+            this.view_route_paths = [];
+            this.view_route_nodes = {};
             let tasks = [];
             let methods = 0;
             if (this.methods.walking) {
@@ -581,6 +583,7 @@ export default {
                     start_name: this.points_to_route[i].addr,
                     end: this.points_to_route[i + 1].nearest_node_id,
                     end_name: this.points_to_route[i + 1].addr,
+                    view_ok: false,
                     status: "未开始",
                     result: {},
                 });
@@ -622,7 +625,11 @@ export default {
                     .then((response) => response.json())
                     .then((data) => {
                         task.result = data;
-                        task.status = "完成";
+                        task.status =
+                            "完成\n" +
+                            (data.pathfinding_time / 1000).toFixed(2) +
+                            "ms";
+                        task.view_ok = true;
                         this.taskFinished += 1;
                     });
             });

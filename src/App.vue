@@ -930,7 +930,6 @@ export default {
             this.isMoving = false;
             this.upd_text(true);
         });
-        this.upd_text(true);
 
         const layerControl = L.control
             .layers(baseMaps, overlayMaps)
@@ -950,15 +949,15 @@ export default {
         });
         this.map.on("zoomend", (e) => {
             this.zoomlevel = this.map.getZoom();
+            localStorage.setItem(
+                "map_zoom",
+                JSON.stringify(this.map.getZoom())
+            );
         });
         this.map.on("moveend", (e) => {
             localStorage.setItem(
                 "map_center",
                 JSON.stringify(this.map.getCenter())
-            );
-            localStorage.setItem(
-                "map_zoom",
-                JSON.stringify(this.map.getZoom())
             );
         });
         if (localStorage.getItem("points") != null) {
@@ -982,6 +981,7 @@ export default {
                 JSON.parse(localStorage.getItem("map_center")),
                 JSON.parse(localStorage.getItem("map_zoom"))
             );
+            setTimeout(this.upd_text(true), 50);
         }
         let r_control = document.getElementById("r-control");
         r_control.addEventListener("mousedown", (e) => {

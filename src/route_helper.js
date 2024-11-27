@@ -68,6 +68,7 @@ export default {
             nodes[paths[0].start],
             nodes[paths[0].end]
         );
+        pathPak.push(paths[0]);
         let lastMethod = paths[0].method;
         for (let i = 1; i < paths.length; i++) {
             let path = paths[i];

@@ -137,11 +137,12 @@
                     active-text="调试"
                     inactive-text="正常"
                 />
+                <!--
                 <el-switch
                     v-model="routing_jump"
                     active-text="跳跃"
                     inactive-text="正常"
-                />
+                />-->
                 <el-select
                     v-model="routing_key"
                     placeholder="Select"
@@ -369,9 +370,10 @@ export default {
             isMoving: false,
             imageOverlay: null,
             imageOverlayLoadLock: false,
-            heuristic_factor: 55,
+            heuristic_factor: 50,
             view_route_paths: [],
             view_route_nodes: {},
+            satellite_layer: null,
         };
     },
     methods: {
@@ -840,9 +842,11 @@ export default {
             let lon_begin = bounds._southWest.lng;
             let lat_end = bounds._southWest.lat;
             let lon_end = bounds._northEast.lng;
-            fetch(
-                `http://local.tmysam.top:11223/ds/text_whole.php?lat_begin=${lat_begin}&lon_begin=${lon_begin}&lat_end=${lat_end}&lon_end=${lon_end}&width=${width}&height=${height}&datauri`
-            )
+            let url = `http://local.tmysam.top:11223/ds/text_whole.php?lat_begin=${lat_begin}&lon_begin=${lon_begin}&lat_end=${lat_end}&lon_end=${lon_end}&width=${width}&height=${height}&datauri`;
+            if (this.map.hasLayer(this.satellite_layer)) {
+                url += "&nost";
+            }
+            fetch(url)
                 .then((response) => response.text())
                 .then((text) => {
                     toRaw(this.imageOverlay).setUrl(text);
@@ -861,9 +865,6 @@ export default {
         this.map = L.map("map", {
             maxZoom: options.depth,
             attributionControl: false,
-            zoomDelta: 1,
-            zoomSnap: 0.25,
-            wheelPxPerZoomLevel: 15,
         }).setView(options.center, 13);
         var AttrControl = L.control.attribution().addTo(this.map);
         //AttrControl.setPrefix('<a href="https://leafletjs.com/">Leaflet</a>');
@@ -876,6 +877,7 @@ export default {
                     '&copy; <a href="https://www.google.com/maps" target="_blank">Google Maps</a>',
             }
         ).setZIndex(0);
+        this.satellite_layer = satellite_layer;
         const dev = L.tileLayer(
             //const dev = new L.TileLayer.SVG(
             "http://local.tmysam.top:11223/ds/base_tile.php?x={x}&y={y}&z={z}",
@@ -907,6 +909,10 @@ export default {
             [0, 0],
             [0, 0],
         ]).addTo(this.map);
+        //base layer change
+        this.map.on("baselayerchange", (e) => {
+            this.upd_text(true);
+        });
         this.map.on("zoomstart", (e) => {
             this.isMoving = true;
         });

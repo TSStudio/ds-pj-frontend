@@ -633,6 +633,9 @@ export default {
                             "ms";
                         task.view_ok = true;
                         this.taskFinished += 1;
+                    })
+                    .catch((error) => {
+                        task.status = "失败";
                     });
             });
         },

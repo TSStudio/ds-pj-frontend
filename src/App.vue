@@ -18,7 +18,15 @@
                         v-model="addr_input"
                         style="width: 100%"
                         placeholder="输入地址"
-                    />
+                    /><br />
+                    <el-select
+                        v-model="search_api"
+                        placeholder="选择API"
+                        style="width: 100%"
+                    >
+                        <el-option label="高德" value="amap" />
+                        <el-option label="Bing" value="bing" />
+                    </el-select>
                     <el-button
                         type="primary"
                         @click="search_point()"
@@ -374,6 +382,7 @@ export default {
             view_route_paths: [],
             view_route_nodes: {},
             satellite_layer: null,
+            search_api: "amap",
         };
     },
     methods: {
@@ -656,22 +665,53 @@ export default {
             this.searching = true;
             //https://restapi.amap.com/v5/place/text?key=5096500c785a85ed94996ee318d15be8&keywords={addr_input}&region=310000&city_limit=true
             let addr_input = encodeURIComponent(this.addr_input);
-
-            fetch(
-                "https://restapi.amap.com/v5/place/text?key=5096500c785a85ed94996ee318d15be8&keywords=" +
-                    addr_input +
-                    "&region=310000&city_limit=false"
-            )
-                .then((response) => response.json())
-                .then((data) => {
-                    this.searching = false;
-                    this.search_result = data.pois;
-                    //local storage
-                    localStorage.setItem(
-                        "search_result",
-                        JSON.stringify(data.pois)
-                    );
-                });
+            if (this.search_api == "amap") {
+                fetch(
+                    "https://restapi.amap.com/v5/place/text?key=5096500c785a85ed94996ee318d15be8&keywords=" +
+                        addr_input +
+                        "&region=310000&city_limit=false"
+                )
+                    .then((response) => response.json())
+                    .then((data) => {
+                        this.searching = false;
+                        this.search_result = data.pois;
+                        //local storage
+                        localStorage.setItem(
+                            "search_result",
+                            JSON.stringify(data.pois)
+                        );
+                    });
+            }
+            if (this.search_api == "bing") {
+                fetch(
+                    "https://atlas.microsoft.com/geocode?api-version=2023-06-01&top=10&query=" +
+                        addr_input +
+                        "&subscription-key=A9G3rOPjEqKGlTJ9Du1hyET5vWb5cITUphJzak4rJEbCFMRsfVXCJQQJ99ALAC8vTIntyeAdAAAgAZMP1M0p"
+                )
+                    .then((response) => response.json())
+                    .then((data) => {
+                        this.searching = false;
+                        // this.search_result = data.results;
+                        // we need to convert the data to the same format as amap
+                        let results = [];
+                        data.features.forEach((result) => {
+                            let coord =
+                                result.properties.geocodePoints[0].geometry
+                                    .coordinates;
+                            results.push({
+                                name: result.properties.address
+                                    .formattedAddress,
+                                location: coord[0] + "," + coord[1],
+                            });
+                        });
+                        this.search_result = results;
+                        //local storage
+                        localStorage.setItem(
+                            "search_result",
+                            JSON.stringify(results)
+                        );
+                    });
+            }
         },
         addPointSearchResult(index, row) {
             let id = Math.floor(Math.random() * 1000000000);
@@ -783,34 +823,86 @@ export default {
         },
         update_location(rowIndex) {
             let _point = this.points[rowIndex];
-            fetch(
-                "https://restapi.amap.com/v3/geocode/regeo?key=5096500c785a85ed94996ee318d15be8&location=" +
-                    _point.selected_lon.toFixed(6) +
-                    "," +
-                    _point.selected_lat.toFixed(6) +
-                    "&extensions=all"
-            )
-                .then((response) => response.json())
-                .then((data) => {
-                    let output = "";
-                    if (data.regeocode.aois.length > 0) {
-                        output += data.regeocode.aois[0].name;
-                    } else if (data.regeocode.pois.length > 0) {
-                        output += data.regeocode.pois[0].name;
-                    }
-                    if (data.regeocode.roadinters.length > 0) {
-                        output +=
-                            "@" +
-                            data.regeocode.roadinters[0].first_name +
-                            data.regeocode.roadinters[0].second_name;
-                    }
-                    output += "(" + data.regeocode.formatted_address + ")";
-                    this.points.forEach((__point) => {
-                        if (__point.id == _point.id) {
-                            __point.addr = output;
+            //126.783794,30.242072
+            //140.618561,46.612512
+            //is a cut line between China and Japan.
+            //use amap for China, use azure for Japan
+
+            // vec A (13.834767,16.37044,0)
+            // vec B (lon-126.783794,lat-30.242072,0)
+            // check if z coord of A X B is positive, if positive then point is in China
+
+            let country = "China";
+            let vecA = [13.834767, 16.37044, 0];
+            let vecB = [
+                _point.selected_lon - 126.783794,
+                _point.selected_lat - 30.242072,
+                0,
+            ];
+            let vecC = [
+                vecA[1] * vecB[2] - vecA[2] * vecB[1],
+                vecA[2] * vecB[0] - vecA[0] * vecB[2],
+                vecA[0] * vecB[1] - vecA[1] * vecB[0],
+            ];
+            if (vecC[2] > 0) {
+                country = "China";
+            } else {
+                country = "Japan";
+            }
+            if (country == "China") {
+                fetch(
+                    "https://restapi.amap.com/v3/geocode/regeo?key=5096500c785a85ed94996ee318d15be8&location=" +
+                        _point.selected_lon.toFixed(6) +
+                        "," +
+                        _point.selected_lat.toFixed(6) +
+                        "&extensions=all"
+                )
+                    .then((response) => response.json())
+                    .then((data) => {
+                        let output = "";
+                        if (data.regeocode.aois.length > 0) {
+                            output += data.regeocode.aois[0].name;
+                        } else if (data.regeocode.pois.length > 0) {
+                            output += data.regeocode.pois[0].name;
                         }
+                        if (data.regeocode.roadinters.length > 0) {
+                            output +=
+                                "@" +
+                                data.regeocode.roadinters[0].first_name +
+                                data.regeocode.roadinters[0].second_name;
+                        }
+                        output += "(" + data.regeocode.formatted_address + ")";
+                        this.points.forEach((__point) => {
+                            if (__point.id == _point.id) {
+                                __point.addr = output;
+                            }
+                        });
                     });
-                });
+            } else {
+                fetch(
+                    "https://atlas.microsoft.com/reverseGeocode?api-version=2023-06-01&coordinates=" +
+                        _point.selected_lon.toFixed(6) +
+                        "," +
+                        _point.selected_lat.toFixed(6) +
+                        "&subscription-key=A9G3rOPjEqKGlTJ9Du1hyET5vWb5cITUphJzak4rJEbCFMRsfVXCJQQJ99ALAC8vTIntyeAdAAAgAZMP1M0p"
+                )
+                    .then((response) => response.json())
+                    .then((data) => {
+                        let output = "";
+                        if (data.features) {
+                            if (data.features.length > 0) {
+                                output =
+                                    data.features[0].properties.address
+                                        .formattedAddress;
+                            }
+                        }
+                        this.points.forEach((__point) => {
+                            if (__point.id == _point.id) {
+                                __point.addr = output;
+                            }
+                        });
+                    });
+            }
         },
 
         get_nearest_node(lat, lon) {
@@ -845,7 +937,8 @@ export default {
             let lon_begin = bounds._southWest.lng;
             let lat_end = bounds._southWest.lat;
             let lon_end = bounds._northEast.lng;
-            let url = `http://local.tmysam.top:11223/ds/text_whole.php?lat_begin=${lat_begin}&lon_begin=${lon_begin}&lat_end=${lat_end}&lon_end=${lon_end}&width=${width}&height=${height}&datauri`;
+            let zoom = this.map.getZoom();
+            let url = `http://local.tmysam.top:11223/ds/text_whole.php?lat_begin=${lat_begin}&lon_begin=${lon_begin}&lat_end=${lat_end}&lon_end=${lon_end}&width=${width}&height=${height}&z=${zoom}&datauri`;
             if (this.map.hasLayer(this.satellite_layer)) {
                 url += "&nost";
             }

@@ -212,53 +212,69 @@
                 </el-table>
             </el-tab-pane>
             <el-tab-pane label="寻路" name="route_progress">
-                <h2>任务</h2>
-                <el-button
-                    type="primary"
-                    @click="look_full_route()"
-                    :disabled="taskFinished != tasks.length"
-                    v-show="tasks.length > 0"
-                    >查看全部</el-button
-                >
-                <el-button
-                    type="primary"
-                    @click="hide_route()"
-                    v-show="routeshowlayer"
-                    >隐藏路径显示</el-button
-                >
-                <el-button
-                    type="primary"
-                    @click="hide_debug_polygon()"
-                    v-show="routing_debug_layer"
-                    >隐藏调试多边形</el-button
-                >
-                <el-table :data="tasks" stripe style="width: 100%">
-                    <el-table-column prop="start_name" label="起点" />
-                    <el-table-column prop="end_name" label="终点" />
-                    <el-table-column prop="status" label="状态" width="70" />
-                    <el-table-column prop="operation" label="操作" width="80">
-                        <template #default="scope"
-                            ><el-button
-                                size="small"
-                                @click="lookRoute(scope.$index, scope.row)"
-                                :disabled="scope.row.view_ok == false"
-                                >查看</el-button
-                            ><el-button
-                                size="small"
-                                @click="vier_r_details(scope.$index, scope.row)"
-                                :disabled="scope.row.view_ok == false"
-                                >详情</el-button
-                            ></template
+                <div v-show="!viewDetails">
+                    <h2>任务</h2>
+                    <el-button
+                        type="primary"
+                        @click="look_full_route()"
+                        :disabled="taskFinished != tasks.length"
+                        v-show="tasks.length > 0"
+                        >查看全部</el-button
+                    >
+                    <el-button
+                        type="primary"
+                        @click="hide_route()"
+                        v-show="routeshowlayer"
+                        >隐藏路径显示</el-button
+                    >
+                    <el-button
+                        type="primary"
+                        @click="hide_debug_polygon()"
+                        v-show="routing_debug_layer"
+                        >隐藏调试多边形</el-button
+                    >
+                    <el-table :data="tasks" stripe style="width: 100%">
+                        <el-table-column prop="start_name" label="起点" />
+                        <el-table-column prop="end_name" label="终点" />
+                        <el-table-column
+                            prop="status"
+                            label="状态"
+                            width="70"
+                        />
+                        <el-table-column
+                            prop="operation"
+                            label="操作"
+                            width="80"
                         >
-                    </el-table-column>
-                </el-table>
-            </el-tab-pane>
-            <el-tab-pane label="详情" name="route_details">
-                <routeviewer
-                    :paths="view_route_paths"
-                    :nodes="view_route_nodes"
-                    @look="lookRoute"
-                />
+                            <template #default="scope"
+                                ><el-button
+                                    size="small"
+                                    @click="lookRoute(scope.$index, scope.row)"
+                                    :disabled="scope.row.view_ok == false"
+                                    >查看</el-button
+                                ><el-button
+                                    size="small"
+                                    @click="
+                                        vier_r_details(scope.$index, scope.row)
+                                    "
+                                    :disabled="scope.row.view_ok == false"
+                                    >详情</el-button
+                                ></template
+                            >
+                        </el-table-column>
+                    </el-table>
+                </div>
+                <div v-show="viewDetails">
+                    <el-button type="primary" @click="viewDetails = false"
+                        >返回</el-button
+                    >
+                    <routeviewer
+                        :paths="view_route_paths"
+                        :nodes="view_route_nodes"
+                        ref="rv"
+                        @look="lookRoute"
+                    />
+                </div>
             </el-tab-pane>
         </el-tabs>
     </div>
@@ -375,6 +391,7 @@ export default {
                 transit: false,
                 subway: false,
             },
+            viewDetails: false,
             isMoving: false,
             imageOverlay: null,
             imageOverlayLoadLock: false,
@@ -561,7 +578,7 @@ export default {
         vier_r_details(index, row) {
             this.view_route_nodes = row.result.nodes;
             this.view_route_paths = row.result.path;
-            this.activeName = "route_details";
+            this.viewDetails = true;
         },
         route_all(heuristic) {
             this.view_route_paths = [];

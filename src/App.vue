@@ -276,6 +276,106 @@
                     />
                 </div>
             </el-tab-pane>
+            <el-tab-pane label="区域" name="zone">
+                <div v-show="!zoneEditing">
+                    <h2>选区</h2>
+                    你可以绘制多边形选区，以在寻路时只包含或排除特定区域。
+                    应用选区会大幅降低寻路性能。
+                    <el-table :data="zones" stripe style="width: 100%">
+                        <el-table-column prop="name" label="名称" />
+                        <el-table-column
+                            prop="operation"
+                            label="操作"
+                            width="200"
+                        >
+                            <template #default="scope"
+                                ><el-button
+                                    size="small"
+                                    @click="lookZone(scope.$index)"
+                                    >查看</el-button
+                                ><el-button
+                                    size="small"
+                                    @click="editZone(scope.$index)"
+                                    >编辑</el-button
+                                ><el-button
+                                    size="small"
+                                    type="danger"
+                                    @click="removeZone(scope.$index)"
+                                    >删除</el-button
+                                ></template
+                            >
+                        </el-table-column>
+                    </el-table>
+                    <el-button type="primary" @click="addZone()"
+                        >新建选区</el-button
+                    ><br />
+
+                    寻路时使用选区限制<el-switch
+                        v-model="useZoneLimiter"
+                        active-text="启用"
+                        inactive-text="关闭"
+                    /><br />
+                    限制模式<el-switch
+                        v-model="zoneWBList"
+                        active-text="作为白名单"
+                        inactive-text="作为黑名单"
+                    /><br />
+                    选区：<el-select
+                        v-model="zoneSelecting"
+                        placeholder="选择选区"
+                        style="width: 150px"
+                    >
+                        <el-option
+                            v-for="(zone, index) in zones"
+                            :key="index"
+                            :label="zone.name"
+                            :value="index"
+                        />
+                    </el-select>
+                </div>
+                <div v-if="zoneEditing">
+                    <h2>编辑选区</h2>
+                    <el-input
+                        v-model="zones[zoneEditingIndex].name"
+                        style="width: 100%"
+                        placeholder="选区名称"
+                    />
+                    点
+                    <el-table
+                        :data="zones[zoneEditingIndex].points"
+                        stripe
+                        style="width: 100%"
+                    >
+                        <el-table-column
+                            prop="operation"
+                            label="操作"
+                            width="100"
+                        >
+                            <template #default="scope"
+                                ><el-button
+                                    size="small"
+                                    @click="viewZonePoint(scope.$index)"
+                                    >查看</el-button
+                                ><el-button
+                                    size="small"
+                                    @click="moveInsertPointer(scope.$index)"
+                                    :disabled="
+                                        zonePointInsertingAt == scope.$index
+                                    "
+                                    >在此处插入</el-button
+                                ><el-button
+                                    size="small"
+                                    @click="removeZonePoint(scope.$index)"
+                                    >删除</el-button
+                                ></template
+                            >
+                        </el-table-column>
+                    </el-table>
+                    <el-button type="primary" @click="zoneEditing = false"
+                        >返回</el-button
+                    >
+                </div>
+            </el-tab-pane>
         </el-tabs>
     </div>
     <div id="r-main">
@@ -392,6 +492,12 @@ export default {
                 subway: false,
             },
             viewDetails: false,
+            zoneEditing: false,
+            zoneEditingIndex: 0,
+            zonePointInsertingAt: 0,
+            zoneSelecting: 0,
+            useZoneLimiter: false,
+            zoneWBList: false,
             isMoving: false,
             imageOverlay: null,
             imageOverlayLoadLock: false,
@@ -400,9 +506,95 @@ export default {
             view_route_nodes: {},
             satellite_layer: null,
             search_api: "amap",
+            zones: [],
+            zone_polygon: null,
         };
     },
     methods: {
+        hideAllOverlays() {
+            if (this.marker != null) {
+                this.map.removeLayer(this.marker);
+            }
+            this.hide_route();
+            this.hide_debug_polygon();
+            this.hide_zone_polygon();
+        },
+        hide_zone_polygon() {
+            if (this.zone_polygon != null) {
+                this.map.removeLayer(this.zone_polygon);
+                this.zone_polygon = null;
+            }
+        },
+        moveInsertPointer(index) {
+            this.zonePointInsertingAt = index;
+        },
+        tryPolygonPointAdd(lat, lon) {
+            if (!this.zoneEditing) {
+                return;
+            }
+            this.zones[this.zoneEditingIndex].points.splice(
+                this.zonePointInsertingAt + 1,
+                0,
+                [lat, lon]
+            );
+            this.zonePointInsertingAt = this.zonePointInsertingAt + 1;
+            if (this.marker != null) {
+                this.map.removeLayer(this.marker);
+            }
+            this.lookZone(this.zoneEditingIndex, true);
+            this.marker = L.marker([lat, lon]).addTo(this.map);
+        },
+        viewZonePoint(index) {
+            if (this.marker != null) {
+                this.map.removeLayer(this.marker);
+            }
+            this.marker = L.marker(
+                this.zones[this.zoneEditingIndex].points[index]
+            ).addTo(this.map);
+        },
+        removeZonePoint(index) {
+            this.zones[this.zoneEditingIndex].points.splice(index, 1);
+            //check index and zoneEditingIndex
+            if (this.index >= this.zonePointInsertingAt) {
+                this.zonePointInsertingAt--;
+            }
+            this.lookZone(this.zoneEditingIndex, true);
+        },
+        editZone(index) {
+            this.zoneEditing = true;
+            this.zoneEditingIndex = index;
+            this.zonePointInsertingAt = 0;
+            this.lookZone(index, true);
+        },
+        addZone() {
+            this.zones.push({
+                name: "新建选区",
+                points: [],
+            });
+        },
+        removeZone(index) {
+            this.zones.splice(index, 1);
+        },
+        lookZone(index, hideWarning = false) {
+            //check points count, if <3, return
+            this.hideAllOverlays();
+            if (this.zones[index].points.length < 3) {
+                if (!hideWarning) {
+                    ElMessage.info("选区至少需要3个点才能显示");
+                }
+                return;
+            }
+
+            let latlngs = [];
+            this.zones[index].points.forEach((point) => {
+                latlngs.push([point[0], point[1]]);
+            });
+            this.zone_polygon = L.polygon(latlngs, {
+                color: "#ff00ff",
+                opacity: 0.5,
+            }).addTo(this.map);
+            this.map.fitBounds(this.zone_polygon.getBounds());
+        },
         moveUp(index, row) {
             let temp = this.points_to_route[index];
             this.points_to_route[index] = this.points_to_route[index - 1];
@@ -545,7 +737,7 @@ export default {
                     tooltipLayer
                 );
             });
-            this.hide_route();
+            this.hideAllOverlays();
             this.routeshowlayer = routeLayer.addTo(this.map);
             this.tooltipLayer = tooltipLayer.addTo(this.map);
             this.map.fitBounds(this.routeshowlayer.getBounds());
@@ -560,7 +752,7 @@ export default {
                 routeLayer,
                 tooltipLayer
             );
-            this.hide_route();
+            this.hideAllOverlays();
             this.routeshowlayer = routeLayer.addTo(this.map);
             this.tooltipLayer = tooltipLayer.addTo(this.map);
             if (row.result.nodes_ch) {
@@ -649,6 +841,18 @@ export default {
                 if (this.routing_jump) {
                     url += "&jump";
                 }
+                if (this.useZoneLimiter) {
+                    url += "&zoneWBList=" + (this.zoneWBList ? "1" : "0");
+                    //zone json in payload [{x,y},...]
+                    let bd = JSON.stringify(
+                        this.zones[this.zoneSelecting].points
+                    );
+                    let bd_base64 = btoa(bd);
+                    //urlencode
+                    bd_base64 = encodeURIComponent(bd_base64);
+                    url += "&zone=" + bd_base64;
+                }
+
                 fetch(url)
                     .then((response) => response.json())
                     .then((data) => {
@@ -662,6 +866,7 @@ export default {
                     })
                     .catch((error) => {
                         task.status = "失败";
+                        console.error("Error:", error);
                     });
             });
         },
@@ -1051,7 +1256,11 @@ export default {
         this.map.on("click", (e) => {
             this.mouse_lat_c = e.latlng.lat;
             this.mouse_lon_c = e.latlng.lng;
-            this.get_nearest_node(e.latlng.lat, e.latlng.lng);
+            if (this.zoneEditing) {
+                this.tryPolygonPointAdd(e.latlng.lat, e.latlng.lng);
+            } else {
+                this.get_nearest_node(e.latlng.lat, e.latlng.lng);
+            }
         });
         this.map.on("mousemove", (e) => {
             this.mouse_lat = e.latlng.lat;
@@ -1092,6 +1301,9 @@ export default {
                 JSON.parse(localStorage.getItem("map_zoom"))
             );
             setTimeout(this.upd_text(true), 50);
+        }
+        if (localStorage.getItem("zones") != null) {
+            this.zones = JSON.parse(localStorage.getItem("zones"));
         }
         let r_control = document.getElementById("r-control");
         r_control.addEventListener("mousedown", (e) => {
@@ -1135,6 +1347,12 @@ export default {
         methods: {
             handler: function (val, oldVal) {
                 localStorage.setItem("methods", JSON.stringify(val));
+            },
+            deep: true,
+        },
+        zones: {
+            handler: function (val, oldVal) {
+                localStorage.setItem("zones", JSON.stringify(val));
             },
             deep: true,
         },

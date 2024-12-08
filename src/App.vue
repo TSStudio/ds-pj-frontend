@@ -127,6 +127,9 @@
                 <el-button type="primary" @click="route_all(true)"
                     >全部寻路（启发式）</el-button
                 >
+                <el-button type="primary" @click="rearrange_using_salesman()"
+                    >重新排序（TSP）</el-button
+                >
                 <div class="heuristic-factor-slider">
                     <span
                         class="demonstration"
@@ -159,6 +162,19 @@
                     <el-option label="时间优先" value="time" />
                     <el-option label="路程优先" value="distance" />
                 </el-select>
+                <el-button
+                    type="danger"
+                    @click="apply_rearrange()"
+                    v-if="revertable"
+                    >接受重排</el-button
+                >
+                <el-button
+                    type="primary"
+                    @click="revert_rearrange()"
+                    v-if="revertable"
+                >
+                    还原顺序
+                </el-button>
                 <el-table :data="points_to_route" stripe style="width: 100%">
                     <el-table-column prop="addr" label="地点" />
                     <el-table-column prop="operation" label="操作" width="200">
@@ -473,6 +489,8 @@ export default {
             addr_input: "",
             search_result: [],
             points_to_route: [],
+            points_to_route_backup: [],
+            revertable: false,
             routing_debug: false,
             routing_jump: false,
             routing_debug_layer: null,
@@ -771,6 +789,67 @@ export default {
             this.view_route_nodes = row.result.nodes;
             this.view_route_paths = row.result.path;
             this.viewDetails = true;
+        },
+        revert_rearrange() {
+            this.points_to_route = this.points_to_route_backup;
+            this.revertable = false;
+        },
+        apply_rearrange() {
+            this.revertable = false;
+        },
+        rearrange_using_salesman() {
+            let methods = 0;
+            if (this.methods.walking) {
+                methods += 1;
+            }
+            if (this.methods.cycling) {
+                methods += 2;
+            }
+            if (this.methods.driving) {
+                methods += 4;
+            }
+            if (this.methods.transit) {
+                methods += 8;
+            }
+            if (this.methods.subway) {
+                methods += 16;
+            }
+            if (methods == 0) {
+                ElMessage.error("请选择至少一种寻路方式");
+                return;
+            }
+            let url =
+                "http://local.tmysam.top:11222/salesman?method=" +
+                methods +
+                "&heuristic_factor=" +
+                this.heuristic_factor / 50;
+
+            if (this.routing_key == "time") {
+                url += "&key=0";
+            } else {
+                url += "&key=1";
+            }
+
+            let nodes = [];
+            this.points_to_route.forEach((point) => {
+                nodes.push([point.nearest_node_id]);
+            });
+            url += "&nodes=" + encodeURIComponent(btoa(JSON.stringify(nodes)));
+            fetch(url)
+                .then((response) => response.json())
+                .then((data) => {
+                    console.log(data); //data like [id,id,id,...]
+                    this.points_to_route_backup = this.points_to_route;
+                    this.points_to_route = [];
+                    data.forEach((id) => {
+                        this.points_to_route.push(
+                            this.points_to_route_backup.find((point) => {
+                                return point.nearest_node_id == id;
+                            })
+                        );
+                    });
+                    this.revertable = true;
+                });
         },
         route_all(heuristic) {
             this.view_route_paths = [];

@@ -127,7 +127,10 @@
                 <el-button type="primary" @click="route_all(true)"
                     >全部寻路（启发式）</el-button
                 >
-                <el-button type="primary" @click="rearrange_using_salesman()"
+                <el-button
+                    type="primary"
+                    @click="rearrange_using_salesman()"
+                    :disabled="revertable"
                     >重新排序（TSP）</el-button
                 >
                 <div class="heuristic-factor-slider">
@@ -392,6 +395,22 @@
                     >
                 </div>
             </el-tab-pane>
+            <el-tab-pane label="设置" name="settings">
+                <h2>设置</h2>
+                <!--set api base-->
+                <el-select
+                    v-model="apibase"
+                    placeholder="选择API"
+                    style="width: 100%"
+                >
+                    <el-option
+                        v-for="(value, key) in bases"
+                        :key="key"
+                        :label="key"
+                        :value="value"
+                    />
+                </el-select>
+            </el-tab-pane>
         </el-tabs>
     </div>
     <div id="r-main">
@@ -468,6 +487,11 @@ export default {
     name: "App",
     data() {
         return {
+            apibase: "",
+            bases: {
+                本地: "http://local.tmysam.top:11222",
+                服务器2: "http://192.168.5.49:11222",
+            },
             activeName: "point_manager",
             map: null,
             mouse_x: 0,
@@ -819,7 +843,8 @@ export default {
                 return;
             }
             let url =
-                "http://local.tmysam.top:11222/salesman?method=" +
+                this.apibase +
+                "/salesman?method=" +
                 methods +
                 "&heuristic_factor=" +
                 this.heuristic_factor / 50;
@@ -900,7 +925,8 @@ export default {
                 }
                 task.status = "进行中";
                 let url =
-                    "http://local.tmysam.top:11222/find_path?start=" +
+                    this.apibase +
+                    "/find_path?start=" +
                     task.start +
                     "&end=" +
                     task.end +
@@ -1104,7 +1130,8 @@ export default {
         update_nearest_node(rowIndex) {
             let _point = this.points[rowIndex];
             fetch(
-                "http://local.tmysam.top:11222/find_nearest_node?lat=" +
+                this.apibase +
+                    "/find_nearest_node?lat=" +
                     _point.selected_lat +
                     "&lon=" +
                     _point.selected_lon
@@ -1258,6 +1285,7 @@ export default {
         },
     },
     mounted() {
+        this.apibase = this.bases["本地"];
         //document.addEventListener("mousemove", this.handleMouseMove);
         this.map = L.map("map", {
             maxZoom: options.depth,

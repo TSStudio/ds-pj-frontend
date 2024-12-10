@@ -7,7 +7,6 @@
     {{ nodes }} -->
 </template>
 <script>
-import { ElButton } from "element-plus";
 import route_helper from "./route_helper";
 export default {
     name: "RouteViewer",

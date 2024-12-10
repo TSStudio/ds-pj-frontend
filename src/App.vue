@@ -411,6 +411,51 @@
                     />
                 </el-select>
             </el-tab-pane>
+            <el-tab-pane label="预设点集" name="presets">
+                <span v-if="!loggedin">正在检查您的权限，请稍等。</span>
+                <div v-if="loggedin">
+                    <el-input v-model="psetname" placeholder="新点集名称" />
+                    <el-button type="primary" @click="new_point_set()"
+                        >新建点集</el-button
+                    >
+                    <el-table
+                        :data="psets"
+                        stripe
+                        style="width: 100%"
+                        v-loading="psetOperationInProcess"
+                    >
+                        <el-table-column prop="name" label="名称" />
+                        <el-table-column
+                            prop="operation"
+                            label="操作"
+                            width="100"
+                        >
+                            <template #default="scope"
+                                ><el-button
+                                    size="small"
+                                    @click="
+                                        loadRemotePointSet(
+                                            scope.$index,
+                                            scope.row
+                                        )
+                                    "
+                                    >使用</el-button
+                                ><el-button
+                                    size="small"
+                                    type="danger"
+                                    @click="
+                                        deleteRemotePointSet(
+                                            scope.$index,
+                                            scope.row
+                                        )
+                                    "
+                                    >删除</el-button
+                                ></template
+                            >
+                        </el-table-column>
+                    </el-table>
+                </div>
+            </el-tab-pane>
         </el-tabs>
     </div>
     <div id="r-main">
@@ -421,6 +466,7 @@
 <script>
 import L from "leaflet";
 import { toRaw } from "vue";
+import * as tapi from "./tapinterface.js";
 
 import routeviewer from "./route_viewer.vue";
 
@@ -550,9 +596,75 @@ export default {
             search_api: "amap",
             zones: [],
             zone_polygon: null,
+            loggedin: false,
+            psetname: "",
+            psets: [],
+            psetOperationInProcess: false,
         };
     },
     methods: {
+        loadRemotePointSet_confirmed(index, row) {
+            let api = new tapi.TAPInterface();
+            api.get_points(row.setid).then((data) => {
+                let pts = [];
+                data.data.points.forEach((point) => {
+                    let id = Math.floor(Math.random() * 1000000000);
+                    pts.push({
+                        id: id,
+                        selected_lat: parseFloat(point.selected_lat),
+                        selected_lon: parseFloat(point.selected_lon),
+                        addr: point.addr,
+                        nearest_node_id: parseInt(point.nearest_node_id),
+                        type: point.type,
+                    });
+                });
+                this.points = pts;
+            });
+        },
+        loadRemotePointSet(index, row) {
+            ElMessageBox.alert("这将覆盖您现有的点集。", "加载远程点集", {
+                confirmButtonText: "确认",
+                callback: (action) => {
+                    if (action == "confirm") {
+                        this.loadRemotePointSet_confirmed(index, row);
+                    }
+                },
+            });
+        },
+        get_point_sets() {
+            let api = new tapi.TAPInterface();
+            api.get_sets().then((data) => {
+                this.psets = data.data;
+                this.psetOperationInProcess = false;
+            });
+        },
+        deleteRemotePointSet(index, row) {
+            this.psetOperationInProcess = true;
+            let api = new tapi.TAPInterface();
+            api.delete_set(row.setid).finally(() => {
+                this.get_point_sets();
+            });
+        },
+        new_point_set_raw(name) {
+            this.psetOperationInProcess = true;
+            let api = new tapi.TAPInterface();
+            let pts = [];
+            this.points.forEach((point) => {
+                pts.push({
+                    selected_lat: point.selected_lat,
+                    selected_lon: point.selected_lon,
+                    addr: point.addr,
+                    nearest_node_id: point.nearest_node_id,
+                    type: point.type,
+                });
+            });
+            return api.new_set(name, pts);
+        },
+        new_point_set() {
+            this.new_point_set_raw(this.psetname).finally(() => {
+                this.get_point_sets();
+            });
+        },
         hideAllOverlays() {
             if (this.marker != null) {
                 this.map.removeLayer(this.marker);
@@ -1053,7 +1165,7 @@ export default {
                 id: id,
                 routing: false,
             });
-            this.update_location(this.points.length - 1);
+            //this.update_location(this.points.length - 1);
             this.update_nearest_node(this.points.length - 1);
         },
         lookPointSearchResult(index, row) {
@@ -1436,6 +1548,13 @@ export default {
                 this.toggle_l_control();
             }
             this.map.invalidateSize({ pan: false });
+        });
+        let api = new tapi.TAPInterface();
+        api.checkLogin().then((data) => {
+            if (data.ok) {
+                this.loggedin = true;
+                this.get_point_sets();
+            }
         });
     },
     watch: {

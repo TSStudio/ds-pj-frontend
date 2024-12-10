@@ -467,6 +467,7 @@
 import L from "leaflet";
 import { toRaw } from "vue";
 import * as tapi from "./tapinterface.js";
+import coord from "./coord.js";
 
 import routeviewer from "./route_viewer.vue";
 
@@ -1113,11 +1114,23 @@ export default {
                     .then((response) => response.json())
                     .then((data) => {
                         this.searching = false;
-                        this.search_result = data.pois;
+                        let sresult = [];
+                        data.pois.forEach((result) => {
+                            let loc = result.location.split(",");
+                            let loc_trans = coord.gcj02towgs84(
+                                parseFloat(loc[0]),
+                                parseFloat(loc[1])
+                            );
+                            sresult.push({
+                                name: result.name,
+                                location: loc_trans[0] + "," + loc_trans[1],
+                            });
+                        });
+                        this.search_result = sresult;
                         //local storage
                         localStorage.setItem(
                             "search_result",
-                            JSON.stringify(data.pois)
+                            JSON.stringify(sresult)
                         );
                     });
             }
@@ -1290,11 +1303,15 @@ export default {
                 country = "Japan";
             }
             if (country == "China") {
+                let c = coord.wgs84togcj02(
+                    _point.selected_lon,
+                    _point.selected_lat
+                );
                 fetch(
                     "https://restapi.amap.com/v3/geocode/regeo?key=&location=" +
-                        _point.selected_lon.toFixed(6) +
+                        c[0] +
                         "," +
-                        _point.selected_lat.toFixed(6) +
+                        c[1] +
                         "&extensions=all"
                 )
                     .then((response) => response.json())

@@ -1,0 +1,5 @@
+export default {
+    AMAP_API_KEY: "",
+    AZURE_API_KEY:
+        "",
+};

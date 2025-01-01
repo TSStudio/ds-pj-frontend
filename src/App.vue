@@ -468,6 +468,7 @@ import L from "leaflet";
 import { toRaw } from "vue";
 import * as tapi from "./tapinterface.js";
 import coord from "./coord.js";
+import keys from "./keys.js";
 
 import routeviewer from "./route_viewer.vue";
 
@@ -1107,7 +1108,9 @@ export default {
             let addr_input = encodeURIComponent(this.addr_input);
             if (this.search_api == "amap") {
                 fetch(
-                    "https://restapi.amap.com/v5/place/text?key=&keywords=" +
+                    "https://restapi.amap.com/v5/place/text?key=" +
+                        keys.AMAP_API_KEY +
+                        "&keywords=" +
                         addr_input +
                         "&region=310000&city_limit=false"
                 )
@@ -1138,7 +1141,8 @@ export default {
                 fetch(
                     "https://atlas.microsoft.com/geocode?api-version=2023-06-01&top=10&query=" +
                         addr_input +
-                        "&subscription-key="
+                        "&subscription-key=" +
+                        keys.AZURE_API_KEY
                 )
                     .then((response) => response.json())
                     .then((data) => {
@@ -1308,7 +1312,9 @@ export default {
                     _point.selected_lat
                 );
                 fetch(
-                    "https://restapi.amap.com/v3/geocode/regeo?key=&location=" +
+                    "https://restapi.amap.com/v3/geocode/regeo?key=" +
+                        keys.AMAP_API_KEY +
+                        "&location=" +
                         c[0] +
                         "," +
                         c[1] +
@@ -1341,7 +1347,8 @@ export default {
                         _point.selected_lon.toFixed(6) +
                         "," +
                         _point.selected_lat.toFixed(6) +
-                        "&subscription-key="
+                        "&subscription-key=" +
+                        keys.AZURE_API_KEY
                 )
                     .then((response) => response.json())
                     .then((data) => {
